@@ -219,3 +219,79 @@ module.exports =
         # keep track of text states
         state.mode = mode
         state.wordSpacing = wordSpacing
+
+    splitToWidth: (string, targetWidth, opts = {}) ->
+        ###
+        PDFKit has a LineWrapper object, but it can't be used to determine a text layout before committing it to the document, and it doesn't expose the actual widths for each line of text. Often, it is useful to know the actual dimensions that a block of text would occupy before writing that text to a document. For example, you might be dynamically laying out a document, and you want to try different options to see what works best. Alternately, you might want to draw a box tight around a multiline block of text. 
+
+        This method takes a string and a width (and optional x and y) and returns an array of String objects representing each line of the text, broken according to the width. Each line has a 'rect' property with x, y, width, and height position metadata. Additionally, the array itself has similar position metadata. The array can be coerced into a hard-wrapped string.
+        ###
+
+        # grab some functions we'll use repeatedly
+        {defineProperty} = Object
+        {max} = Math
+
+        # create an object that will behave like a PDFDocument as far as the LineWrapper is concerned
+        dummyDoc = {
+            x: opts.x or @x or 0
+            y: opts.y or @y or 0
+            options: @options
+            widthOfString: @widthOfString.bind(@)
+            currentLineHeight: @currentLineHeight.bind(@)
+        }
+
+        # make a wrapper that will not affect the real document
+        wrapper = new LineWrapper dummyDoc 
+
+        lines = [] # output object
+
+        maxLineWid = 0
+        lineGap = opts.lineGap or @_lineGap or 0
+
+        wrapper.on 'line', (text, dims, opts) ->
+            {document} = opts
+
+            # make a string object we can attach metadata to
+            strObj = new String text 
+
+            # determine position metadata for current line
+            rect =  
+                x: document.x
+                y: document.y
+                w: dims.textWidth # basically, this whole method exists to expose this piece of data
+                h: document.currentLineHeight(true)
+          
+            # add position metadata to String object
+            defineProperty strObj, 'rect', value: rect 
+
+            # add string object to lines
+            lines.push strObj
+            maxLineWid = max rect.w, maxLineWid
+            document.y += rect.h + lineGap
+
+        # have wrapper process the input string
+        wrapper.wrap [string], 
+            width: targetWidth
+            height: Infinity # don't want wrapper to add new sections or pages, we probably want to do that ourselves
+
+        # lines is an array of String objects with position metadata for each line
+        # determine position metadata for the entire block of text
+        rect =  
+            x: dummyDoc.x
+            y: dummyDoc.y
+            w: maxLineWid
+            h: lines.length * (@currentLineHeight() + @_lineGap)
+
+        # add position metadata for the block of text
+        for key, value of {
+            rect: rect
+            # width is probably the most useful data point, or at least it's the hardest to come by
+            width: rect.width 
+            height: rect.height
+
+            # with this function, the lines array can be coerced to a string, meaning that it can be passed as-is to doc.text or certain other functions that expect a string. But it's safest to call toString() explicitly before sending the object into some random function.
+            toString: -> @join '\n' 
+        }
+            defineProperty lines, key, {value}
+
+        lines
