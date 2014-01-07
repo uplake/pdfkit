@@ -1,6 +1,6 @@
 WORD_RE = /([^ ,\/!.?:;\-\n]*[ ,\/!.?:;\-]*)|\n/g
 LineWrapper = require '../line_wrapper'
-PrintedText = require '../printed_text'
+PrintedText = require '../text_map'
 
 module.exports = 
     initText: ->
