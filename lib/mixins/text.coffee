@@ -1,5 +1,6 @@
 WORD_RE = /([^ ,\/!.?:;\-\n]*[ ,\/!.?:;\-]*)|\n/g
 LineWrapper = require '../line_wrapper'
+PrintedText = require '../printed_text'
 
 module.exports = 
     initText: ->
@@ -31,12 +32,17 @@ module.exports =
         # Convert text to a string
         text = '' + text
                     
+        if options.textMap
+            @textMap = new PrintedText text, this
+        else
+            @textMap = null
+        
         # if the wordSpacing option is specified, remove multiple consecutive spaces
         if options.wordSpacing
             text = text.replace(/\s{2,}/g, ' ')
             
         paragraphs = text.split '\n'
-        
+
         # word wrapping
         if options.width
             wrapper = new LineWrapper(this)
@@ -153,6 +159,9 @@ module.exports =
         wordSpacing = options.wordSpacing or 0
         characterSpacing = options.characterSpacing or 0
 
+        # split the line into words
+        words = text.match(WORD_RE) or [text]
+
         # text alignments
         if options.width
             switch align
@@ -163,14 +172,15 @@ module.exports =
                     x += options.lineWidth / 2 - options.textWidth / 2
 
                 when 'justify'
-                    # split the line into words
-                    words = text.match(WORD_RE) or [text]
                     break unless words
 
                     # calculate the word spacing value  
                     textWidth = @widthOfString(text.replace(/\s+/g, ''), options)
                     spaceWidth = @widthOfString(' ') + characterSpacing
                     wordSpacing = (options.lineWidth - textWidth) / (words.length - 1) - spaceWidth
+
+        if @textMap?
+            @textMap.addLine words, x, y, wordSpacing, options 
 
         # flip coordinate system
         @save()
