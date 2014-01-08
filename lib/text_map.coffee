@@ -56,14 +56,13 @@ class TextMap
         @options ?= options
         @x = Math.min @x, x
         @y = Math.min @y, y
-        {page} = @doc
-        pageIndex = @doc.pages.indexOf page 
 
-        lineProps = {
-            x, y, pageIndex
+        lineProps = 
+            x: x
+            y: y
             w: @doc.widthOfString(words.join(''), options)
             h: @doc.currentLineHeight(yes)
-        }
+            page: @doc.page
 
         @w = Math.max @w, lineProps.w
         @h += lineProps.h
@@ -72,7 +71,8 @@ class TextMap
         for word in words 
             if word.length > 0
                 strObj = new Word word, {
-                    x, y, pageIndex
+                    x: x
+                    y: y
                     w: @doc.widthOfString(word, options)
                     h: @doc.currentLineHeight(no)
                     index: @consumedCharCount
@@ -124,7 +124,7 @@ class TextMap
                 if (not rect?) or (word.y isnt rect.y)  # new line, make new rect
                     {x, y, h} = word
                     x += @doc.widthOfString word.unusedChars(), @options
-                    rect = {x, y, h, w: 0, pageIndex: word.pageIndex}
+                    rect = {x, y, h, w: 0}
                     rects.push rect
 
                 rect.w += @doc.widthOfString word[0...(matchedText.length)], @options
@@ -140,8 +140,7 @@ class TextMap
         @doc.saveFont()
         @doc.font @fontSpec.name, @fontSpec.size
 
-        for {x, y, w, h, pageIndex} in @getRects pattern
-            @doc.page = @doc.pages[pageIndex] if pageIndex?
+        for {x, y, w, h} in @getRects pattern
             opts = clone options, 'Type'
             annotationArgs = [x, y, w, h].concat(args).concat(opts)
             annotation.apply @doc, annotationArgs
