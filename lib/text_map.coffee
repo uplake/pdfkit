@@ -51,8 +51,8 @@ class TextMap
 
     initRect: ->
         @rect = 
-            x: @doc.page.width
-            y: @doc.page.height
+            x: Infinity
+            y: Infinity
             w: 0
             h: 0
             pageIndex: @pageIndex
