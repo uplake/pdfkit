@@ -44,35 +44,45 @@ class TextMap
         @lines = []
         @wordData = []
         @wordDataIndices = []
-
-        @x = doc.page.width
-        @y = doc.page.height
-        @w = 0
-        @h = 0
+        @pageIndex = doc.pages.indexOf doc.page 
+        @rects = [@initRect()]
 
         @fontSpec = doc.currentFontSpec()
 
+    initRect: ->
+        @rect = 
+            x: @doc.page.width
+            y: @doc.page.height
+            w: 0
+            h: 0
+            pageIndex: @pageIndex
+        @rect
+
     addLine: (words, x, y, wordSpacing, options) ->
         @options ?= options
-        @x = Math.min @x, x
-        @y = Math.min @y, y
+        {page} = @doc
+        pageIndex = @doc.pages.indexOf page 
+        if pageIndex isnt @pageIndex
+            @pageIndex = pageIndex
+            @rects.push @initRect()
 
-        lineProps = 
-            x: x
-            y: y
+        @rect.x = Math.min @rect.x, x
+        @rect.y = Math.min @rect.y, y
+
+        lineProps = {
+            x, y, pageIndex
             w: @doc.widthOfString(words.join(''), options)
             h: @doc.currentLineHeight(yes)
-            page: @doc.page
+        }
 
-        @w = Math.max @w, lineProps.w
-        @h += lineProps.h
+        @rect.w = Math.max @rect.w, lineProps.w
+        @rect.h += lineProps.h
 
         lineWords = []
         for word in words 
             if word.length > 0
                 strObj = new Word word, {
-                    x: x
-                    y: y
+                    x, y, pageIndex
                     w: @doc.widthOfString(word, options)
                     h: @doc.currentLineHeight(no)
                     index: @consumedCharCount
@@ -124,7 +134,7 @@ class TextMap
                 if (not rect?) or (word.y isnt rect.y)  # new line, make new rect
                     {x, y, h} = word
                     x += @doc.widthOfString word.unusedChars(), @options
-                    rect = {x, y, h, w: 0}
+                    rect = {x, y, h, w: 0, pageIndex: word.pageIndex}
                     rects.push rect
 
                 rect.w += @doc.widthOfString word[0...(matchedText.length)], @options
@@ -140,7 +150,8 @@ class TextMap
         @doc.saveFont()
         @doc.font @fontSpec.name, @fontSpec.size
 
-        for {x, y, w, h} in @getRects pattern
+        for {x, y, w, h, pageIndex} in @getRects pattern
+            @doc.page = @doc.pages[pageIndex] if pageIndex?
             opts = clone options, 'Type'
             annotationArgs = [x, y, w, h].concat(args).concat(opts)
             annotation.apply @doc, annotationArgs
@@ -175,12 +186,17 @@ if require.main is module
     PDFDoc = require('./document')
     doc = new PDFDoc
     # doc.scale 1.5 # annotations don't honor transformations
-    for wid in [1..5]
-        doc.fontSize 8 + 2*wid
-        wid *= 100
+    _w = 1
+    until doc.pages.length > 1 
+        doc.fontSize 8 + 2*_w
+        wid = Math.min _w*100, doc.page.width - doc.page.margins.left - doc.page.margins.right
+        y = if _w is 6
+            doc.page.height - doc.page.margins.bottom - 2*doc.currentLineHeight() 
+        else
+            doc.y
         doc.text """
-        This is some text that will occupy more than one line with a width of #{wid}. I will underline each group of two or more consonants and strike each group of two or more vowels.
-        """, 
+        #{_w}. This is some text that will occupy more than one line with a width of #{wid}. I will underline each group of two or more consonants and strike each group of two or more vowels.
+        """, 72, y,
             width: wid
             textMap: yes
         doc.moveDown()
@@ -189,20 +205,25 @@ if require.main is module
 
         # annotate based on regexps
         textMap.highlight(/this .+ line/i)
-            .underline(/[^aeiou\d\W]{2,}/g)
+            .underline(if _w is 6 then /roup of tw/g else /[^aeiou\d\W]{2,}/g)
             .strike(/[aeiou]{2,}/g)
 
         # textMap has a lines property with an array of broken lines
         # each element of the lines array is an array of words
         # each line and word element has {x, y, w, h} properties
         word = textMap.lines[2].words[3] # get dims of a word of a line of text
-        {x, y, w, h} = word
-        doc.rectAnnotation x-1, y-3, 3+doc.widthOfString("#{word}".replace /\s+/, ''), h+6
+        if word?
+            {x, y, w, h} = word
+            doc.rectAnnotation x-1, y-3, 3+doc.widthOfString("#{word}".replace /\s+/, ''), h+6
 
-        {x, y, w, h} = textMap # the textMap itself also has {x, y, w, h} properties
-        doc.rect x-2, y-2, w+4, h+4 # draw a rect around the block of text
-        doc.moveTo( x + wid, y).lineTo(x + wid, y+h) # the textMap probably isn't exactly as wide as wid
-        doc.stroke()
+        for rect in textMap.rects # the textMap itself also has array of {x, y, w, h} properties
+            {x, y, w, h, pageIndex} = rect
+            doc.page = doc.pages[pageIndex]
+            doc.rect x-2, y-2, w+4, h+4 # draw a rect around the block of text
+            doc.moveTo( x + wid, y).lineTo(x + wid, y+h) # the textMap probably isn't exactly as wide as wid
+            doc.stroke()
+        _w++
+
     doc.write '/Users/ckirby/Documents/Dropbox/MyGitProjects/out.pdf'
 
     w = new Word "Hi there"
