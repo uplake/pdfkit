@@ -17,16 +17,6 @@ module.exports =
 
         @_fontStack = []
 
-    currentFontSpec: -> {name: @_font.filename, size: @_fontSize}
-
-    saveFont: ->
-        @_fontStack.push @currentFontSpec()
-        return this
-        
-    restoreFont: ->
-        fontSpec = @_fontStack.pop() or {name: 'Helvetica', size: 12}
-        @font fontSpec.name, fontSpec.size
-
     font: (filename, family, size) ->
         if typeof family is 'number'
             size = family

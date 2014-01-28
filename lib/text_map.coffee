@@ -47,7 +47,18 @@ class TextMap
         @pageIndex = doc.pages.indexOf doc.page 
         @rects = [@initRect()]
 
-        @fontSpec = doc.currentFontSpec()
+        @fontSpec = @currentFontSpec()
+
+    currentFontSpec: -> {name: @doc._font.filename, size: @doc._fontSize}
+
+    saveFont: ->
+        @doc._fontStack.push @currentFontSpec()
+        return this
+        
+    restoreFont: ->
+        fontSpec = @doc._fontStack.pop() or {name: 'Helvetica', size: 12}
+        @doc.font fontSpec.name, fontSpec.size
+
 
     initRect: ->
         @rect = 
@@ -147,7 +158,7 @@ class TextMap
         annotation = @doc[options.Type]
         return unless annotation?
 
-        @doc.saveFont()
+        @saveFont()
         @doc.font @fontSpec.name, @fontSpec.size
 
         for {x, y, w, h, pageIndex} in @getRects pattern
@@ -156,7 +167,7 @@ class TextMap
             annotationArgs = [x, y, w, h].concat(args).concat(opts)
             annotation.apply @doc, annotationArgs
 
-        @doc.restoreFont()
+        @restoreFont()
 
         return this
 
@@ -181,53 +192,4 @@ class TextMap
         @annotate pattern, args, options
 
 module.exports = TextMap
-
-if require.main is module
-    PDFDoc = require('./document')
-    doc = new PDFDoc
-    # doc.scale 1.5 # annotations don't honor transformations
-    _w = 1
-    until doc.pages.length > 1 
-        doc.fontSize 8 + 2*_w
-        wid = Math.min _w*100, doc.page.width - doc.page.margins.left - doc.page.margins.right
-        y = if _w is 6
-            doc.page.height - doc.page.margins.bottom - 2*doc.currentLineHeight() 
-        else
-            doc.y
-        doc.text """
-        #{_w}. This is some text that will occupy more than one line with a width of #{wid}. I will underline each group of two or more consonants and strike each group of two or more vowels.
-        """, 72, y,
-            width: wid
-            textMap: yes
-        doc.moveDown()
-
-        {textMap} = doc
-
-        # annotate based on regexps
-        textMap.highlight(/this .+ line/i)
-            .underline(if _w is 6 then /roup of tw/g else /[^aeiou\d\W]{2,}/g)
-            .strike(/[aeiou]{2,}/g)
-
-        # textMap has a lines property with an array of broken lines
-        # each element of the lines array is an array of words
-        # each line and word element has {x, y, w, h} properties
-        word = textMap.lines[2].words[3] # get dims of a word of a line of text
-        if word?
-            {x, y, w, h} = word
-            doc.rectAnnotation x-1, y-3, 3+doc.widthOfString("#{word}".replace /\s+/, ''), h+6
-
-        for rect in textMap.rects # the textMap itself also has array of {x, y, w, h} properties
-            {x, y, w, h, pageIndex} = rect
-            doc.page = doc.pages[pageIndex]
-            doc.rect x-2, y-2, w+4, h+4 # draw a rect around the block of text
-            doc.moveTo( x + wid, y).lineTo(x + wid, y+h) # the textMap probably isn't exactly as wide as wid
-            doc.stroke()
-        _w++
-
-    doc.write '/Users/ckirby/Documents/Dropbox/MyGitProjects/out.pdf'
-
-    w = new Word "Hi there"
-    console.log w, w.length, w[3..], w.replace(/Hi/, 'Bye'), w.toUpperCase()
-    w = new Line ["Hi ", "there"]
-    console.log w, w.length, w[3..], w.replace(/Hi/, 'Bye'), w.toUpperCase()
 

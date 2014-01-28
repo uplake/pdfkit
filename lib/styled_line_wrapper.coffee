@@ -1,28 +1,12 @@
 # This regular expression is used for splitting a string into wrappable words
-WORD_RE = /([^ ,\/!.?:;\-\n]*[ ,\/!.?:;\-]*)|\n/g
+WORD_RE = /([^ ,\/!.?:;\-\n"]*[ ,\/!.?:;\-"]*)|\n/g
 {EventEmitter} = require 'events'
+LineWrapper = require './line_wrapper'
 
-class LineWrapper extends EventEmitter
-    constructor: (@document) ->
-        @on 'firstLine', (options) =>
-            indent = options.indent or 0
-            @document.x += indent
-            options.lineWidth -= indent
-            
-            @once 'line', =>
-                @document.x -= indent
-                options.lineWidth += indent
-        
-        @on 'lastLine', (options) =>
-            align = options.align
-            options.align = 'left' if align is 'justify'
-            
-            @once 'line', =>
-                @document.y += options.paragraphGap or 0
-                options.align = align
+
+class StyledLineWrapper extends LineWrapper
         
     wrap: (paragraphs, options) ->
-        width = @document.widthOfString.bind(@document)
         indent = options.indent or 0
         charSpacing = options.characterSpacing or 0
         wordSpacing = options.wordSpacing is 0
@@ -46,12 +30,47 @@ class LineWrapper extends EventEmitter
         wordWidths = {}
         
         @emit 'sectionStart', options, this
+
+        {getStyle, setStyle} = options
+        style = null
+
+        doc_width = @document.widthOfString.bind(@document)
+        width = (string) ->
+            setStyle style
+            doc_width string, options
+
+        lineFragments = []
+        buffer = ''
+        wc = 0
         
+        doLine = =>
+            pushBuf()
+            options.textWidth = (@lineWidth - spaceLeft) + wordSpacing * (wc - 1)
+            {x, y} = @document
+            for {buffer, style, w}, ii in lineFragments
+                setStyle style
+                # options.wordCount = wc # trying to make justification work, doesn't
+                @emit 'fragment', buffer, x, y, options, this
+                x += w
+
+            @emit 'line', '', options, this
+            lineFragments = []
+
+        pushBuf = =>
+            #don't push buffer if it's the first word we've seen
+            if style?
+                lineFragments.push {buffer, style, w: width(buffer), wc}
+
+            # start new buffer
+            buffer = ''
+
+
         for text, i in paragraphs
             @emit 'firstLine', options, this
             
             # split the line into words
             words = text.match(WORD_RE) or [text]
+            console.log {words} if @document._fontSize is 9
                           
             # space left on the line to fill with words
             spaceLeft = @lineWidth - indent
@@ -59,15 +78,23 @@ class LineWrapper extends EventEmitter
             
             len = words.length
             buffer = ''
+            lineFragments = []
             wc = 0
-            
+
             for word, wi in words
-                
-                w = wordWidths[word] ?= width(word, options) + charSpacing + wordSpacing
+
+                newstyle = getStyle i, wi, word
+                if newstyle?
+                    pushBuf()
+                    style = newstyle
+
+                wordWidthsForStyle = wordWidths[style] ?= {}
+
+                unless (w = wordWidthsForStyle[word])?
+                    w = wordWidthsForStyle[word] = width(word, options) + charSpacing + wordSpacing
 
                 if w > spaceLeft or word is '\n'
-                    options.textWidth = width(buffer.trim(), options) + wordSpacing * (wc - 1)
-                    @emit 'line', buffer.trim(), options, this
+                    doLine()
                                         
                     # if we've reached the edge of the page, 
                     # continue on a new page or column
@@ -84,12 +111,13 @@ class LineWrapper extends EventEmitter
                     spaceLeft -= w
                     buffer += word
                     wc++
+                    # if @document._fontSize is 24
+                    #     console.log "adding word:", {word, buffer}
                         
             # add the last line
             @lastLine = true
             @emit 'lastLine', options, this
-            options.textWidth = width(buffer.trim(), options) + wordSpacing * (wc - 1)
-            @emit 'line', buffer.trim(), options, this
+            doLine()
             
             # make sure that the first line of a paragraph is never by 
             # itself at the bottom of a page (orphans)
@@ -99,21 +127,5 @@ class LineWrapper extends EventEmitter
                 
         @emit 'sectionEnd', options, this
                     
-    nextSection: (options) ->
-        @emit 'sectionEnd', options, this
-        
-        if ++@column > @columns
-            @document.addPage()
-            @column = 1
-            @startY = @document.page.margins.top
-            @maxY = @document.page.maxY()
-            @emit 'pageBreak', options, this
             
-        else
-            @document.x += @lineWidth + @columnGap
-            @document.y = @startY
-            @emit 'columnBreak', options, this
-        
-        @emit 'sectionStart', options, this
-            
-module.exports = LineWrapper
+module.exports = StyledLineWrapper

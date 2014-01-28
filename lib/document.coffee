@@ -57,6 +57,7 @@ class PDFDocument
     mixin 'vector'
     mixin 'fonts'
     mixin 'text'
+    mixin 'styled_text'
     mixin 'images'
     mixin 'annotations'
         

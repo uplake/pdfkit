@@ -45,7 +45,7 @@ module.exports =
 
         # word wrapping
         if options.width
-            wrapper = new LineWrapper(this)
+            wrapper = options.wrapper ? new LineWrapper(this)
             wrapper.on 'line', @_line.bind(this)
             wrapper.wrap(paragraphs, options)
             
